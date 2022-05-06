@@ -1,0 +1,268 @@
+<%@page import="generated.MeetingRoom"%>
+<%@page import="com.jalios.jcms.DataSelector"%>
+<%@page import="com.jalios.jcms.AndDataSelector"%>
+<%@page import="com.jalios.jcms.JcmsUtil"%>
+<%@page import="com.jalios.jcmsplugin.calendar.CalendarUtil"%>
+<%@page import="com.jalios.jcms.context.MessageLevel"%>
+<%@page import="com.jalios.jcms.Publication"%>
+<%@page import="java.util.HashSet"%>
+<%@page import="com.jalios.jcms.JcmsConstants"%>
+<%@page import="com.jalios.util.ServletUtil"%>
+<%@page import="com.jalios.util.Util"%>
+<%@page import="com.jalios.jcmsplugin.calendar.CalendarConstants"%>
+<%
+int nbMaxToDisplay = 20;
+%>
+<div class="<%= obj.getClass().getSimpleName() %>-block event-block <%= obj.getImportanceLevel() %>">
+  <ul class="list-group">
+    <jalios:include target="CALENDAREVENT_FULLDISPLAY_DATE_BLOCK_BEFORE" />
+    <li class="list-group-item">
+      <%@ include file='/plugins/CalendarPlugin/jsp/fulldisplay/displayDate.jspf' %>  
+    </li>
+    <jalios:include target="CALENDAREVENT_FULLDISPLAY_DATE_BLOCK_AFTER" />
+
+    <%-- LOCATION --%>
+    <%
+    {
+      Set<Data> meetingRoomResourceSet = new HashSet();
+      if(obj.getResources() != null){
+        meetingRoomResourceSet.addAll(Arrays.asList(obj.getResources()));
+        meetingRoomResourceSet = (Set<Data>) JcmsUtil.applyDataSelector(meetingRoomResourceSet, new AndDataSelector(Publication.getAuthorizedSelector(loggedMember),new DataSelector(){
+          public boolean isSelected(Data data){ return data != null && data instanceof MeetingRoom; }
+        }) ); 
+      }
+       boolean isLocation = Util.notEmpty(obj.getLocation(userLang)) && CalendarUtil.isFieldDisplayed(obj.getClass(),"location");
+       boolean isMeetingRoom = Util.notEmpty(meetingRoomResourceSet);
+    %>
+    <% if(isLocation || isMeetingRoom) { %>
+     <%-- DEP 44 : ajout titre  --%>
+	    <div class="panel-heading" style="margin-top:10px;">Lieu</div>
+      <li class="list-group-item location container-fluid">
+		      <div class="inline"><jalios:icon src="jcmsplugin-calendar-location" /></div>
+	        <ul class="list-inline inline">
+		        <li>
+				      <ul li class="list-unstyled">
+			        <% if(isLocation){ %>
+				        <li><jalios:wiki><%= obj.getLocation(userLang) %></jalios:wiki></li>
+			        <%} %>
+			        <% if(isMeetingRoom){%>
+			          <jalios:foreach name="itData" type="AbstractEventResource" collection="<%= meetingRoomResourceSet %>">
+				          <jalios:if predicate='<%= itData != null %>'>
+				            <li class="media">
+				              <div class="media-body">
+				                <jalios:link data='<%= itData %>'/>
+				              </div>
+				            </li>
+				          </jalios:if>
+				        </jalios:foreach>
+			        <%} %>
+			        </ul>
+			      </li>
+			    </ul>
+      </li>
+    <% } 
+    }%>
+    
+    <%-- CATEGORIES --%>
+    <%-- DEP 44 : on masque ce bloc  --%>
+    <%--
+    <% if (obj instanceof Publication) { %>
+      <% Category[] categories = ((Publication)obj).getCategories(loggedMember); %>
+      <% if(Util.notEmpty(categories)){ %>
+        <li class="list-group-item categories">
+          <%@ include file="/custom/jcms/doCategoryList.jspf"  %>
+        </li>
+      <% } %>
+    <% } %>
+	--%>
+	
+    <%-- PARTICIPATING --%>
+    <%-- DEP 44 : affiche le bloc "Participants" si le Set n'est pas vide  --%>
+    <jalios:if predicate="<%= Util.getSize(obj.getAllAttendingMembersSet()) != 0%>">
+    <li class="list-group-item">
+      <div class="row">
+        <% boolean isAction = false; %>
+        <jalios:buffer name="actionBuffer">       
+        <% if(!isExternalEvent) { 
+          if (loggedMember != null && isDataWriteEnabled && (!oldEvent || isPeriodicalEvent ) && (obj.getFreeSignUp() || (isAttendee) || ((Data)obj).getAuthor().equals(loggedMember) ||  isAcceptedOrDeclined)) {
+            boolean isParticipating = (loggedMember != null && Util.getSize(obj.getAllAttendingMembersSet()) != 0) ? obj.getAllAttendingMembersSet().contains(loggedMember): false;
+            boolean isInSet = false;
+            boolean isPending = false;
+            boolean isDeclined = false;
+            boolean isAccepted = false;
+            if(Util.notEmpty(acceptedSet)) {
+              isAccepted = acceptedSet.contains(loggedMember);
+              isInSet |= isAccepted;
+            }
+            if(Util.notEmpty(pendingSet)) {
+              isPending =pendingSet.contains(loggedMember);
+              isInSet |= isPending; 
+            }
+            if(Util.notEmpty(declinedSet)) {
+              isDeclined =declinedSet.contains(loggedMember);   
+              isInSet |= isDeclined;           
+            }
+            isParticipating = (!isDeclined) && isAccepted;
+            String calId = ((Data) obj).getId();
+            if(calId == null){
+              calId = ((Data) ((Data)obj).getExtraInfo(CalendarUtil.PERIODIC_PARENT)).getId();
+            }
+            String participateUrl =  "plugins/CalendarPlusPlugin/types/CalendarEvent/doCalendarEventFullDisplay.jsp?eventId="+calId+"&amp;participate=true";
+            String notParticipateUrl =  "plugins/CalendarPlusPlugin/types/CalendarEvent/doCalendarEventFullDisplay.jsp?eventId="+calId+"&amp;notParticipate=true";
+            %>
+            <%if(((Data)obj).getAuthor().equals(loggedMember)  || isInSet || obj.getFreeSignUp() ){ %>
+              <div class="col-md-6 actions ">    
+                <%-- logged member have already answered the event --%>
+                <% isAction=true; %>
+                <div class="br">
+                <%=glp("jcmsplugin.calendar.participate-pending") %>
+                <div class="btn-group">
+                  <% if(isAccepted){ %>
+                      <button class="ajax-refresh calendar-action accepted btn btn-success"><%= glp("ui.com.lbl.yes") %></button>
+                  <%}else {%>
+                     <a href="<%= participateUrl %>" class="ajax-refresh calendar-action accepted btn btn-default"><%= glp("ui.com.lbl.yes") %></a>
+                  <%} %>
+                  <% if(isDeclined){ %>
+                     <button class="ajax-refresh calendar-action accepted btn btn-danger"><%= glp("ui.com.lbl.no") %></button>
+                  <%}else {%>
+	                   <a href="<%= notParticipateUrl %>" class="ajax-refresh calendar-action declined btn btn-default"><%= glp("ui.com.lbl.no") %></a>
+	                <%} %>                  
+                </div>
+                </div>
+                <%
+                  //check if current user has another event at the same time                
+                  Set<Publication> mbrCalendars = CalendarUtil.getMemberCalendarEvent(loggedMember);
+                  Set<Publication> eventsSet = CalendarUtil.checkMemberAvailibity(startDate, (endDate.getTime() - startDate.getTime()) / JcmsConstants.MILLIS_IN_ONE_SECOND , loggedMember, mbrCalendars);
+                %>
+                <div>
+                  <%
+                  Set<Publication> eventsForIdSet = new HashSet<Publication>();
+                  if(Util.notEmpty(eventsSet)){
+                    for(Publication tmpPub : eventsSet){                        
+                      if(tmpPub.getId() != null){
+                        if(tmpPub.getId().equals(calId)){
+                          continue;
+                        }
+                        eventsForIdSet.add(tmpPub);
+                      }
+                      else{
+                        Publication tmpParentCalendarEvent = (Publication) ((Data)tmpPub).getExtraInfo(CalendarUtil.PERIODIC_PARENT);
+                        if(tmpParentCalendarEvent != null){
+                          if(tmpParentCalendarEvent.getId().equals(calId)){
+                            continue;
+                          }
+                          eventsForIdSet.add(tmpParentCalendarEvent);
+                        }
+                      }
+                    }
+                  }
+                  if(Util.notEmpty(eventsForIdSet)){
+                  %>
+                   <jalios:message level="<%=MessageLevel.WARN %>" dismissable="<%=false %>">
+                    <p><%= glp("jcmsplugin.calendar.event.not-available") %></p>
+                    <ul><%
+                     for(Publication pub : eventsForIdSet){
+                       %><li><jalios:link data="<%=pub %>" /></li><%
+                     }
+                     %>
+                    </ul>
+                   </jalios:message>
+                  <%} %>
+                </div>
+               </div>
+            <% } %>
+          <% } %>
+        <% } %>
+        </jalios:buffer>
+        <div class="col-md-<%= isAction ? "6" : "12" %> attendees">
+          <label><%= glp("jcmsplugin.calendar.attendees") %></label>
+          
+          <div class="wrapper-attendee-photo">
+            <% int i = nbMaxToDisplay; %>        
+            <% if (Util.notEmpty(acceptedSet)) { %>  
+              <% for (Member mbr : acceptedSet) { %>          
+                <jalios:memberphoto member="<%= mbr %>" size="<%= PhotoSize.TINY %>" css="img img-circle accepted"/>
+    	        <%
+    	        i--;
+    	        if(i==0) {
+                  break;
+                }
+                %>
+              <% } %>
+    	    <% } %>
+            <% if (Util.notEmpty(contactSet)) { %> 
+              <% for (Member mbr : contactSet) {%>          
+                <jalios:memberphoto member="<%= mbr %>" size="<%= PhotoSize.TINY %>" css="img img-circle contact"/>
+    	        <%
+    	        i--;
+    	        if(i==0 ) {
+                  break;
+                }
+                %>
+              <% } %>
+            <% } %>
+            <% if (Util.notEmpty(pendingSet)) { %>  
+              <% for (Member mbr : pendingSet) { %>          
+                <jalios:memberphoto member="<%= mbr %>" size="<%= PhotoSize.TINY %>" css="img img-circle pending"/>
+                <%
+                i--;
+                if(i==0 ) {
+                  break;
+                }
+                %>
+              <% } %>
+            <% } %>
+          </div>
+          <% if(i==0) {
+              int nbNotDisplayed = Util.getSize(acceptedSet) + Util.getSize(contactSet)+ Util.getSize(pendingSet) - nbMaxToDisplay;
+              if(nbNotDisplayed > 0){
+            %>
+              <a href="<%=ServletUtil.getUrl(request) %>#attendees" ><%=glp("jcmsplugin.calendar.more-attendees", nbNotDisplayed) %></a>
+          <% 
+              }
+             } %>
+        </div>
+        <% if(isAction) { %>
+          <%= ((Map<String, Object>) request.getAttribute("BUFFER_CONTEXT")).get("actionBuffer") %> 
+        <% } %>
+      </div>
+    </li>
+	</jalios:if>
+	
+    <%-- REMINDER / IMPORTANCE LEVEL --%>
+    <%
+    boolean noReminder = obj.getReminderDuration() == 0 || !CalendarUtil.isFieldDisplayed(obj.getClass(),"reminderDuration");
+    String importanceLevel = obj.getImportanceLevel();
+    boolean isPrivate = obj.getPrivateFlag() && CalendarUtil.isFieldDisplayed(obj.getClass(),"privateFlag");
+    boolean isImportance = Util.notEmpty(importanceLevel) && CalendarUtil.isFieldDisplayed(obj.getClass(),"importanceLevel");
+    %>
+    <% if(!noReminder || isPrivate || isImportance) { %>
+    <li class="list-group-item reminder-duration importance-level">
+      <div class="row">
+        <div class="col-md-4">
+          <label><%= channel.getTypeFieldLabel(CalendarEvent.class, "reminderDuration", userLang) %></label>
+          <% if(noReminder) { %>
+            <%= glp("jcmsplugin.calendar.no-reminder") %>
+          <% } else { %>
+            <jalios:duration time="<%= obj.getReminderDuration() * 1000L %>" />
+          <% } %>
+		</div>
+        <div class="col-md-4">
+          <label><%= channel.getTypeFieldLabel(CalendarEvent.class, "importanceLevel", userLang) %></label>
+		      <% if( obj instanceof CalendarEvent) { %>
+            <% if(Util.isEmpty(importanceLevel)) { %>
+              <% importanceLevel = "normal"; %>
+		      <% } %>
+		      <%= CalendarEvent.getImportanceLevelLabel(importanceLevel, userLang) %>
+          <% } else { %>
+            <%= importanceLevel %>
+          <% } %>
+        </div>  
+        <div class="col-md-4">          
+            <jalios:icon src="jcmsplugin-calendar-private" /> <label><%= channel.getTypeFieldLabel(CalendarEvent.class, "privateFlag", userLang) %></label> <%=obj.getPrivateFlag()?glp("types.CalendarEvent.fields.privateFlag.onLabel"):glp("types.CalendarEvent.fields.privateFlag.offLabel") %>
+	      </div>
+      </div>
+    </li> 
+   <% } %>
+  </ul>
+</div>
